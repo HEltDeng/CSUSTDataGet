@@ -1,0 +1,117 @@
+package com.example.spider_app
+
+import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
+import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
+import com.dcelysia.csust_spider.core.Resource
+import com.dcelysia.csust_spider.core.RetrofitUtils
+import com.dcelysia.csust_spider.education.data.remote.EducationHelper
+import com.dcelysia.csust_spider.education.data.remote.services.AuthService
+import com.dcelysia.csust_spider.education.data.remote.services.ExamArrangeService
+import com.dcelysia.csust_spider.mooc.data.remote.repository.MoocRepository
+import com.example.csustdataget.CampusCard.CampusCardHelper
+import com.example.spider_app.databinding.ActivityMainBinding
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class MainActivity : AppCompatActivity() {
+    private val binding : ActivityMainBinding by lazy { ActivityMainBinding.inflate(layoutInflater) }
+    private val TAG = "MainActivity"
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContentView(binding.root)
+        binding.loginButton.setOnClickListener {
+            val username = binding.usernameInput.text.toString().trim()
+            val password = binding.passwordInput.text.toString()
+            if (username.isBlank() || password.isBlank()) {
+                Toast.makeText(this, R.string.login_input_required, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            CoroutineScope(Dispatchers.IO).launch {
+                RetrofitUtils.ClearClient("moocClient")
+                RetrofitUtils.ClearClient("EducationClient")
+                try {
+                    val loginResult = MoocRepository.instance.login(username, password)
+                    .filter { it !is Resource.Loading }
+                    .first()
+                    if(loginResult is Resource.Error){
+                        Log.d(TAG,"登陆失败, ${loginResult.msg}")
+                    }
+                    val ssoResult = AuthService.login(username, password)
+                    val course = EducationHelper.getCourseScheduleByTerm("","2025-2026-1")
+                    Log.d(TAG,"course:${course}")
+                    if (ssoResult&&(loginResult is Resource.Success)){
+                        val course = EducationHelper.getCourseScheduleByTerm("","2025-2026-1")
+                        Log.d(TAG,"course:${course}")
+                    } else if(loginResult is Resource.Error){
+                        Log.d(TAG,"登陆失败, ${loginResult.msg}")
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, e.toString())
+                }
+                val result = ExamArrangeService.getExamArrange("2025-2026-2")
+                when(result){
+                    is Resource.Success -> {
+                        Log.d(TAG,"考试安排:${result.data}")
+                    }
+                    is Resource.Error -> {
+                        Log.d(TAG,"考试安排:${result.msg}")
+                    }
+                    is Resource.Loading -> {
+                        Log.d(TAG,"考试安排:加载中")
+                    }
+                }
+
+
+                val rl = EducationHelper.getCourseGrades()
+                Log.d(TAG,"grades:${rl}")
+            }
+        }
+        binding.dianliang.setOnClickListener {
+            CoroutineScope(Dispatchers.IO).launch {
+                val dianliang = CampusCardHelper.queryElectricity("云塘校区","至诚轩五栋A区","a211")
+                Log.d(TAG,"电量：”${dianliang}")
+                try {
+                    Log.d(TAG,"A区：${CampusCardHelper.buildingFallbackMap["至诚轩5栋A区"]}")
+                }catch (e: Exception){
+                    Log.d(TAG, CampusCardHelper.buildingFallbackMap.toString())
+                }
+                withContext(Dispatchers.Main){
+                    binding.tvDl.text =  dianliang.toString()
+                }
+            }
+        }
+
+        binding.course.setOnClickListener {
+            CoroutineScope(Dispatchers.IO).launch {
+                val courseSchedule = EducationHelper.getCourseScheduleByTerm("","2025-2026-2")
+                withContext(Dispatchers.Main){
+                    binding.tvDl.text = courseSchedule.toString()
+                }
+
+            }
+        }
+        binding.termDetails.setOnClickListener {
+            CoroutineScope(Dispatchers.IO).launch {
+                val details = EducationHelper.getSemesterStartDate("2026-2027-1")
+                binding.tvDl.text = details
+            }
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            insets
+        }
+    }
+}
